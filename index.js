@@ -58,6 +58,7 @@ function createPanZoom(domElement, options) {
   var filterKey = typeof options.filterKey === 'function' ? options.filterKey : noop;
   var realPinch = typeof options.realPinch === 'boolean' ? options.realPinch : false
   var bounds = options.bounds
+  var allowScalingOutOfBounds = typeof options.allowScalingOutOfBounds === 'boolean' ? options.allowScalingOutOfBounds : false
   var maxZoom = typeof options.maxZoom === 'number' ? options.maxZoom : Number.POSITIVE_INFINITY
   var minZoom = typeof options.minZoom === 'number' ? options.minZoom : 0
 
@@ -242,34 +243,50 @@ function createPanZoom(domElement, options) {
     var adjusted = false
     var clientRect = getClientRect()
 
-    var diff = boundingBox.left - clientRect.right
-    if (diff > 0) {
-      transform.x += diff
+    var diff_left = boundingBox.left - clientRect.right
+    var diff_right = boundingBox.right - clientRect.left
+    if(diff_left > 0 && diff_right < 0){ 
+      //if element is outside both bounds at once, put it in the center
+      transform.x += (diff_left + diff_right)/2
       adjusted = true
     }
-    // check the other side:
-    diff = boundingBox.right - clientRect.left
-    if (diff < 0) {
-      transform.x += diff
-      adjusted = true
+    else{
+      if (diff_left > 0) {
+        transform.x += diff_left
+        adjusted = true
+      }
+      // check the other side:
+      
+      if (diff_right < 0) {
+        transform.x += diff_right
+        adjusted = true
+      }
     }
 
     // y axis:
-    diff = boundingBox.top - clientRect.bottom
-    if (diff > 0) {
-      // we adjust transform, so that it matches exactly our bounding box:
-      // transform.y = boundingBox.top - (boundingBox.height + boundingBox.y) * transform.scale =>
-      // transform.y = boundingBox.top - (clientRect.bottom - transform.y) =>
-      // transform.y = diff + transform.y =>
-      transform.y += diff
+    var diff_top = boundingBox.top - clientRect.bottom
+    var diff_bottom = boundingBox.bottom - clientRect.top
+    if (diff_top > 0 && diff_bottom < 0){
+      transform.y += (diff_top + diff_bottom)/2
       adjusted = true
     }
+    else{
+      if (diff_top > 0) {
+        // we adjust transform, so that it matches exactly our bounding box:
+        // transform.y = boundingBox.top - (boundingBox.height + boundingBox.y) * transform.scale =>
+        // transform.y = boundingBox.top - (clientRect.bottom - transform.y) =>
+        // transform.y = diff + transform.y =>
+        transform.y += diff_top
+        adjusted = true
+      }
 
-    diff = boundingBox.bottom - clientRect.top
-    if (diff < 0) {
-      transform.y += diff
-      adjusted = true
+      
+      if (diff_bottom < 0) {
+        transform.y += diff_bottom
+        adjusted = true
+      }
     }
+  
     return adjusted
   }
 
@@ -344,8 +361,7 @@ function createPanZoom(domElement, options) {
     transform.y = size.y - ratio * (size.y - transform.y)
 
     var transformAdjusted = keepTransformInsideBounds()
-    if (!transformAdjusted) transform.scale *= ratio
-
+    if (!transformAdjusted || allowScalingOutOfBounds) transform.scale *= ratio
     triggerEvent('zoom')
 
     makeDirty()
