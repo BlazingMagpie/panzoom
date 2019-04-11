@@ -266,6 +266,7 @@ function createPanZoom(domElement, options) {
     // y axis:
     var diff_top = boundingBox.top - clientRect.bottom
     var diff_bottom = boundingBox.bottom - clientRect.top
+    console.log("before: "+ clientRect.bottom);
     if (diff_top > 0 && diff_bottom < 0){
       transform.y += (diff_top + diff_bottom)/2
       adjusted = true
@@ -360,8 +361,16 @@ function createPanZoom(domElement, options) {
     transform.x = size.x - ratio * (size.x - transform.x)
     transform.y = size.y - ratio * (size.y - transform.y)
 
-    var transformAdjusted = keepTransformInsideBounds()
-    if (!transformAdjusted || allowScalingOutOfBounds) transform.scale *= ratio
+    transform.scale *= ratio
+    var transformAdjusted = keepTransformInsideBounds();
+
+    if (transformAdjusted && ratio < 1.0 && !allowScalingOutOfBounds) {
+      transform.scale /= ratio //hack
+    }
+    
+    
+    console.log(!transformAdjusted + " " + (ratio > 1.0) + " " + allowScalingOutOfBounds)
+    console.log("after: " + getClientRect().bottom);
     triggerEvent('zoom')
 
     makeDirty()
