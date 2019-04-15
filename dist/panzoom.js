@@ -59,6 +59,7 @@ function createPanZoom(domElement, options) {
   var filterKey = typeof options.filterKey === 'function' ? options.filterKey : noop;
   var realPinch = typeof options.realPinch === 'boolean' ? options.realPinch : false
   var bounds = options.bounds
+  var allowScalingOutOfBounds = typeof options.allowScalingOutOfBounds === 'boolean' ? options.allowScalingOutOfBounds : false
   var maxZoom = typeof options.maxZoom === 'number' ? options.maxZoom : Number.POSITIVE_INFINITY
   var minZoom = typeof options.minZoom === 'number' ? options.minZoom : 0
 
@@ -243,34 +244,51 @@ function createPanZoom(domElement, options) {
     var adjusted = false
     var clientRect = getClientRect()
 
-    var diff = boundingBox.left - clientRect.right
-    if (diff > 0) {
-      transform.x += diff
+    var diff_left = boundingBox.left - clientRect.right
+    var diff_right = boundingBox.right - clientRect.left
+    if(diff_left > 0 && diff_right < 0){ 
+      //if element is outside both bounds at once, put it in the center
+      transform.x += (diff_left + diff_right)/2
       adjusted = true
     }
-    // check the other side:
-    diff = boundingBox.right - clientRect.left
-    if (diff < 0) {
-      transform.x += diff
-      adjusted = true
+    else{
+      if (diff_left > 0) {
+        transform.x += diff_left
+        adjusted = true
+      }
+      // check the other side:
+      
+      if (diff_right < 0) {
+        transform.x += diff_right
+        adjusted = true
+      }
     }
 
     // y axis:
-    diff = boundingBox.top - clientRect.bottom
-    if (diff > 0) {
-      // we adjust transform, so that it matches exactly our bounding box:
-      // transform.y = boundingBox.top - (boundingBox.height + boundingBox.y) * transform.scale =>
-      // transform.y = boundingBox.top - (clientRect.bottom - transform.y) =>
-      // transform.y = diff + transform.y =>
-      transform.y += diff
+    var diff_top = boundingBox.top - clientRect.bottom
+    var diff_bottom = boundingBox.bottom - clientRect.top
+    console.log("before: "+ clientRect.bottom);
+    if (diff_top > 0 && diff_bottom < 0){
+      transform.y += (diff_top + diff_bottom)/2
       adjusted = true
     }
+    else{
+      if (diff_top > 0) {
+        // we adjust transform, so that it matches exactly our bounding box:
+        // transform.y = boundingBox.top - (boundingBox.height + boundingBox.y) * transform.scale =>
+        // transform.y = boundingBox.top - (clientRect.bottom - transform.y) =>
+        // transform.y = diff + transform.y =>
+        transform.y += diff_top
+        adjusted = true
+      }
 
-    diff = boundingBox.bottom - clientRect.top
-    if (diff < 0) {
-      transform.y += diff
-      adjusted = true
+      
+      if (diff_bottom < 0) {
+        transform.y += diff_bottom
+        adjusted = true
+      }
     }
+  
     return adjusted
   }
 
@@ -344,9 +362,16 @@ function createPanZoom(domElement, options) {
     transform.x = size.x - ratio * (size.x - transform.x)
     transform.y = size.y - ratio * (size.y - transform.y)
 
-    var transformAdjusted = keepTransformInsideBounds()
-    if (!transformAdjusted) transform.scale *= ratio
+    transform.scale *= ratio
+    var transformAdjusted = keepTransformInsideBounds();
 
+    if (transformAdjusted && ratio < 1.0 && !allowScalingOutOfBounds) {
+      transform.scale /= ratio //hack
+    }
+    
+    
+    console.log(!transformAdjusted + " " + (ratio > 1.0) + " " + allowScalingOutOfBounds)
+    console.log("after: " + getClientRect().bottom);
     triggerEvent('zoom')
 
     makeDirty()
@@ -1550,34 +1575,50 @@ module.exports = addWheelListener;
 module.exports.addWheelListener = addWheelListener;
 module.exports.removeWheelListener = removeWheelListener;
 
+var supportsPassive = false;
+try {
+  var opts = Object.defineProperty({}, 'passive', {
+    get: function() {
+      supportsPassive = true;
+    }
+  });
+  window.addEventListener("test", null, opts);
+} catch (e) {}
 
 var prefix = "", _addEventListener, _removeEventListener,  support;
 
 detectEventModel(typeof window !== 'undefined' && window,
                 typeof document !== 'undefined' && document);
 
-function addWheelListener( elem, callback, useCapture ) {
-    _addWheelListener( elem, support, callback, useCapture );
+function addWheelListener( elem, callback, options ) {
+    _addWheelListener( elem, support, callback, options );
 
     // handle MozMousePixelScroll in older Firefox
     if( support == "DOMMouseScroll" ) {
-        _addWheelListener( elem, "MozMousePixelScroll", callback, useCapture );
+        _addWheelListener( elem, "MozMousePixelScroll", callback, options );
     }
 }
 
-function removeWheelListener( elem, callback, useCapture ) {
-    _removeWheelListener( elem, support, callback, useCapture );
+function removeWheelListener( elem, callback, options ) {
+    options = supportsPassive ? options : false;
+    if (supportsPassive) {
+      
+    } else {
+
+    }
+    _removeWheelListener( elem, support, callback, options );
 
     // handle MozMousePixelScroll in older Firefox
     if( support == "DOMMouseScroll" ) {
-        _removeWheelListener( elem, "MozMousePixelScroll", callback, useCapture );
+        _removeWheelListener( elem, "MozMousePixelScroll", callback, options );
     }
 }
 
   // TODO: in theory this anonymous function may result in incorrect
   // unsubscription in some browsers. But in practice, I don't think we should
   // worry too much about it (those browsers are on the way out)
-function _addWheelListener( elem, eventName, callback, useCapture ) {
+function _addWheelListener( elem, eventName, callback, options ) {
+  options = supportsPassive ? options : false;
   elem[ _addEventListener ]( prefix + eventName, support == "wheel" ? callback : function( originalEvent ) {
     !originalEvent && ( originalEvent = window.event );
 
@@ -1620,11 +1661,11 @@ function _addWheelListener( elem, eventName, callback, useCapture ) {
     // it's time to fire the callback
     return callback( event );
 
-  }, useCapture || false );
+  }, options );
 }
 
-function _removeWheelListener( elem, eventName, callback, useCapture ) {
-  elem[ _removeEventListener ]( prefix + eventName, callback, useCapture || false );
+function _removeWheelListener( elem, eventName, callback, options ) {
+  elem[ _removeEventListener ]( prefix + eventName, callback, options );
 }
 
 function detectEventModel(window, document) {
