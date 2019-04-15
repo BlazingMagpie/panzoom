@@ -437,7 +437,7 @@ function createPanZoom(domElement, options) {
 
     // Need to listen on the owner container, so that we are not limited
     // by the size of the scrollable domElement
-    wheel.addWheelListener(owner, onMouseWheel)
+    wheel.addWheelListener(owner, onMouseWheel, {passive: false});
 
     makeDirty()
   }
